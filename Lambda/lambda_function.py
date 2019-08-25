@@ -47,28 +47,11 @@ def lambda_handler(event, context):
             response = table.query(KeyConditionExpression=Key("sensor_type").eq("humi") & Key("sensor_name").eq("raspi"),ScanIndexForward = False,Limit=1)
             humi=str(response["Items"][0]["payload"]["value"])
             message = TextSendMessage(text="温度は"+temp+"℃で、湿度は"+humi+"%だよ")
-        elif(line_event.message.text == "次のバスの時刻は？"):
-            message = TemplateSendMessage(
-                alt_text='Confirm template',
-                template=ConfirmTemplate(
-                    text='今から出かける？それとも帰る？',
-                    actions=[
-                        MessageAction(
-                            label='出かける',
-                            text='出発のバス時刻'
-                        ),
-                        MessageAction(
-                            label='帰る',
-                            text='帰宅のバス時刻'
-                        )
-                    ]
-                )
-            )
-        elif(line_event.message.text == "帰宅のバス時刻" or line_event.message.text == "出発のバス時刻"):
+        elif(line_event.message.text == "行きの次のバスは？" or line_event.message.text == "帰りの次のバスは？"):
             utc = datetime.datetime.now()
             now=utc+datetime.timedelta(hours=9)
             minutes=now.hour * 60 + now.minute
-            if(line_event.message.text == "出発のバス時刻"):
+            if(line_event.message.text == "行きの次のバスは？"):
                 table = db.Table("bus_time_GH")
             else:
                 table = db.Table("bus_time_St")
@@ -86,29 +69,12 @@ def lambda_handler(event, context):
                 text=text[:-1]
                 text+="があるよ"
             message = TextSendMessage(text=text)
-        elif(line_event.message.text == "エアコン操作して"):
-            message = TemplateSendMessage(
-                alt_text='Confirm template',
-                template=ConfirmTemplate(
-                    text='つける？それとも消す？',
-                    actions=[
-                        MessageAction(
-                            label='つける',
-                            text='エアコンをつけて'
-                        ),
-                        MessageAction(
-                            label='消す',
-                            text='エアコンを消して'
-                        )
-                    ]
-                )
-            )
-        elif(line_event.message.text == "エアコンをつけて"):
+        elif(line_event.message.text == "エアコンつけて"):
             requests.post(os.getenv('WEB_HOOK_URL1', None), data = json.dumps({
                 "value1":"test"
             }))
             message = TextSendMessage(text="エアコンつけたよ")
-        elif(line_event.message.text == "エアコンを消して"):
+        elif(line_event.message.text == "エアコン消して"):
             requests.post(os.getenv('WEB_HOOK_URL2', None), data = json.dumps({
                 "value1":"test"
             }))
@@ -126,7 +92,13 @@ def lambda_handler(event, context):
                 text+="だよ"
             message = TextSendMessage(text=text)
         else:
-            message = TextSendMessage(text="定型文以外は非対応")
+            talk_json = requests.post("https://api.a3rt.recruit-tech.co.jp/talk/v1/smalltalk",{"apikey":os.getenv('A3RT_API_KEY', None),"query":line_event.message.text})
+            talk_dict=json.loads(talk_json.text)
+            print(talk_dict)
+            try:
+                message = TextSendMessage(text=talk_dict["results"][0]["reply"])
+            except:
+                message = TextSendMessage(text="ちょっと何言ってるかわかんない")
         
         line_bot_api.reply_message(line_event.reply_token, message)
 
