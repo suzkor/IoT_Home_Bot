@@ -25,6 +25,10 @@ handler = WebhookHandler(channel_secret)
 
 db = boto3.resource("dynamodb")
 
+home = os.getenv('HOME_BUSSTOP', None)
+station = os.getenv('STATION_BUSSTOP', None)
+line_code = os.getenv('LINE_CODE', None)
+
 def lambda_handler(event, context):
     print(event)
     signature = event["headers"]["X-Line-Signature"]
@@ -47,28 +51,36 @@ def lambda_handler(event, context):
             response = table.query(KeyConditionExpression=Key("sensor_type").eq("humi") & Key("sensor_name").eq("raspi"),ScanIndexForward = False,Limit=1)
             humi=str(response["Items"][0]["payload"]["value"])
             message = TextSendMessage(text="温度は"+temp+"℃で、湿度は"+humi+"%だよ")
-        elif(line_event.message.text == "行きの次のバスは？" or line_event.message.text == "帰りの次のバスは？"):
-            utc = datetime.datetime.now()
-            now=utc+datetime.timedelta(hours=9)
-            minutes=now.hour * 60 + now.minute
-            if(line_event.message.text == "行きの次のバスは？"):
-                table = db.Table("bus_time_GH")
-            else:
-                table = db.Table("bus_time_St")
-            if(now.weekday()<5):
-                response = table.query(KeyConditionExpression=Key("day").eq("weekday") & Key("min").gt(minutes),ScanIndexForward = True,Limit=3)
-            else:
-                response = table.query(KeyConditionExpression=Key("day").eq("Holiday") & Key("min").gt(minutes),ScanIndexForward = True,Limit=3)
-            item=response["Items"]
-            if(item==[]):
-                text = "今日はもうないね"
-            else:
-                text="次は、"
-                for i in item:
-                    text += i["time"]+"、"
-                text=text[:-1]
-                text+="があるよ"
-            message = TextSendMessage(text=text)
+        elif(line_event.message.text == "行きの次のバスは？"):
+            clientLambda = boto3.client("lambda")
+            params={
+                "count":3,
+                "dep":home,
+                "arrival":station,
+                "line":line_code
+            }
+            res=clientLambda.invoke(
+                FunctionName="navibustime",
+                InvocationType="RequestResponse",
+                Payload=json.dumps(params)
+            )
+            res_json=json.loads(res['Payload'].read())
+            message = TextSendMessage(text=res_json["body"])
+        elif(line_event.message.text == "帰りの次のバスは？"):
+            clientLambda = boto3.client("lambda")
+            params={
+                "count":3,
+                "dep":station,
+                "arrival":home,
+                "line":line_code
+            }
+            res=clientLambda.invoke(
+                FunctionName="navibustime",
+                InvocationType="RequestResponse",
+                Payload=json.dumps(params)
+            )
+            res_json=json.loads(res['Payload'].read())
+            message = TextSendMessage(text=res_json["body"])
         elif(line_event.message.text == "エアコンつけて"):
             requests.post(os.getenv('WEB_HOOK_URL1', None), data = json.dumps({
                 "value1":"test"
